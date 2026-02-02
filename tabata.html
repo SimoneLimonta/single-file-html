@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tabata Timer</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --primary: #bb86fc;
+            --text: #ffffff;
+            --work: #03dac6;
+            --rest: #cf6679;
+            --gray: #888;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            user-select: none; /* Prevent text selection on double tap */
+        }
+
+        /* --- Main Layout --- */
+        .container {
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+            box-sizing: border-box;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        h1 { margin: 0; font-weight: 300; font-size: 1.5rem; color: var(--gray); }
+
+        /* --- Timer Display --- */
+        #timer-display {
+            font-size: 6rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            margin: 10px 0;
+        }
+
+        #status-label {
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+        }
+
+        .status-work { color: var(--work); }
+        .status-rest { color: var(--rest); }
+        .status-idle { color: var(--gray); }
+        .status-done { color: var(--primary); }
+
+        /* --- Inputs --- */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .setting-item label {
+            font-size: 0.8rem;
+            color: var(--gray);
+            margin-bottom: 5px;
+        }
+
+        input[type="number"] {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid #333;
+            font-size: 1.5rem;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+            -moz-appearance: textfield;
+        }
+        
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+
+        /* --- Controls --- */
+        button {
+            border: none;
+            padding: 15px;
+            border-radius: 50px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+            touch-action: manipulation;
+        }
+        
+        button:active { opacity: 0.7; }
+
+        .btn-start { background-color: var(--work); color: #000; }
+        .btn-stop { background-color: var(--rest); color: #000; display: none; }
+        .btn-secondary { background-color: var(--surface); color: var(--text); margin-top: 10px; font-size: 1rem; }
+
+        /* --- Library --- */
+        .library {
+            margin-top: 20px;
+            width: 100%;
+            border-top: 1px solid #333;
+            padding-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .library h2 { font-size: 1rem; color: var(--gray); margin-bottom: 10px; }
+
+        .preset-item {
+            background: var(--surface);
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        
+        .preset-info span { color: var(--primary); font-weight: bold; }
+        .delete-btn { color: var(--rest); background: none; width: auto; padding: 5px 10px; font-size: 1.2rem; font-weight: bold; }
+
+        .hidden { display: none !important; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 id="top-title">TABATA TIMER</h1>
+
+    <div id="status-label" class="status-idle">READY</div>
+    <div id="timer-display">00:00</div>
+    <div id="rep-counter" style="color: var(--gray);">Total Time: <span id="total-time">0m</span></div>
+
+    <div id="settings-area" class="settings-grid">
+        <div class="setting-item">
+            <label>WORK</label>
+            <input type="number" id="work-input" value="20" placeholder="20">
+        </div>
+        <div class="setting-item">
+            <label>REST</label>
+            <input type="number" id="rest-input" value="10" placeholder="10">
+        </div>
+        <div class="setting-item">
+            <label>REPS</label>
+            <input type="number" id="reps-input" value="8" placeholder="8">
+        </div>
+    </div>
+
+    <button id="btn-start" class="btn-start">START WORKOUT</button>
+    <button id="btn-stop" class="btn-stop">STOP / RESET</button>
+
+    <div id="library-controls">
+        <button id="btn-save" class="btn-secondary">Save to Library</button>
+        <div class="library">
+            <h2>LIBRARY</h2>
+            <div id="library-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Elements ---
+    const workInput = document.getElementById('work-input');
+    const restInput = document.getElementById('rest-input');
+    const repsInput = document.getElementById('reps-input');
+    const display = document.getElementById('timer-display');
+    const statusLabel = document.getElementById('status-label');
+    const totalTimeDisplay = document.getElementById('total-time');
+    const btnStart = document.getElementById('btn-start');
+    const btnStop = document.getElementById('btn-stop');
+    const btnSave = document.getElementById('btn-save');
+    const libraryList = document.getElementById('library-list');
+
+    // --- State ---
+    let timerInterval = null;
+    let wakeLock = null;
+    let audioCtx = null;
+    
+    // Workout State
+    let state = {
+        timeLeft: 0,
+        currentRep: 1,
+        totalReps: 8,
+        mode: 'IDLE', // IDLE, PREPARE, WORK, REST
+        workTime: 20,
+        restTime: 10
+    };
+
+    // --- Audio System (Lazy Load for Mobile) ---
+    function initAudio() {
+        if (!audioCtx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+                audioCtx = new AudioContext();
+            }
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    function beep(type) {
+        if (!audioCtx) return;
+        
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        
+        if (type === 'start') {
+            osc.frequency.setValueAtTime(880, now); // High pitch (Work)
+            osc.type = 'sine';
+        } else if (type === 'rest') {
+            osc.frequency.setValueAtTime(440, now); // Low pitch (Rest)
+            osc.type = 'sine';
+        } else if (type === 'end') {
+            osc.frequency.setValueAtTime(600, now); // Finish
+            osc.type = 'triangle';
+        }
+
+        osc.start(now);
+        gain.gain.setValueAtTime(1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.stop(now + 0.5);
+    }
+
+    // --- Core Logic ---
+    function formatTime(s) {
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return `${m < 10 ? '0'+m : m}:${sec < 10 ? '0'+sec : sec}`;
+    }
+
+    function getValues() {
+        // Parse inputs, default to 0 if empty
+        return {
+            w: parseInt(workInput.value) || 20,
+            r: parseInt(restInput.value) || 10,
+            reps: parseInt(repsInput.value) || 8
+        };
+    }
+
+    function calculateTotal() {
+        const { w, r, reps } = getValues();
+        const total = (w + r) * reps;
+        totalTimeDisplay.innerText = Math.floor(total/60) + 'm ' + (total%60) + 's';
+        
+        if (state.mode === 'IDLE') {
+            display.innerText = formatTime(w);
+        }
+    }
+
+    // --- Timer Functions ---
+    async function startTimer() {
+        initAudio(); // Initialize audio on user click
+        
+        // Prevent sleep
+        try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
+
+        const vals = getValues();
+        state.workTime = vals.w;
+        state.restTime = vals.r;
+        state.totalReps = vals.reps;
+        state.currentRep = 1;
+        
+        // UI Updates
+        document.getElementById('settings-area').classList.add('hidden');
+        document.getElementById('library-controls').classList.add('hidden');
+        btnStart.style.display = 'none';
+        btnStop.style.display = 'block';
+
+        // Start 'Prepare' phase
+        state.mode = 'PREPARE';
+        state.timeLeft = 5; 
+        statusLabel.className = 'status-idle';
+        statusLabel.innerText = "GET READY";
+        display.innerText = "00:05";
+
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(tick, 1000);
+    }
+
+    function tick() {
+        state.timeLeft--;
+        
+        if (state.timeLeft < 0) {
+            nextPhase();
+        } else {
+            display.innerText = formatTime(state.timeLeft);
+        }
+    }
+
+    function nextPhase() {
+        if (state.mode === 'PREPARE' || state.mode === 'REST') {
+            // Go to WORK
+            if (state.currentRep > state.totalReps) {
+                finish();
+                return;
+            }
+            state.mode = 'WORK';
+            state.timeLeft = state.workTime;
+            statusLabel.innerText = `WORK (${state.currentRep}/${state.totalReps})`;
+            statusLabel.className = 'status-work';
+            beep('start');
+        } else if (state.mode === 'WORK') {
+            // Go to REST
+            if (state.currentRep === state.totalReps) {
+                finish(); // Skip last rest
+                return;
+            }
+            state.mode = 'REST';
+            state.timeLeft = state.restTime;
+            statusLabel.innerText = "REST";
+            statusLabel.className = 'status-rest';
+            state.currentRep++;
+            beep('rest');
+        }
+        display.innerText = formatTime(state.timeLeft);
+    }
+
+    function finish() {
+        clearInterval(timerInterval);
+        beep('end');
+        statusLabel.innerText = "DONE!";
+        statusLabel.className = 'status-done';
+        display.innerText = "00:00";
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+        if (wakeLock) wakeLock.release();
+        
+        state.mode = 'IDLE';
+        statusLabel.innerText = "READY";
+        statusLabel.className = 'status-idle';
+        
+        // Reset UI
+        document.getElementById('settings-area').classList.remove('hidden');
+        document.getElementById('library-controls').classList.remove('hidden');
+        btnStart.style.display = 'block';
+        btnStop.style.display = 'none';
+        
+        calculateTotal();
+    }
+
+    // --- Library Functions ---
+    const STORAGE_KEY = 'tabata_presets_v2';
+
+    function getLibrary() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.error("Storage inaccessible", e);
+            return [];
+        }
+    }
+
+    function saveToLibrary() {
+        const name = prompt("Name this workout:", "My Tabata");
+        if (!name) return;
+
+        const vals = getValues();
+        const preset = {
+            id: Date.now(),
+            name: name,
+            work: vals.w,
+            rest: vals.r,
+            reps: vals.reps
+        };
+
+        try {
+            const lib = getLibrary();
+            lib.push(preset);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(lib));
+            renderLibrary();
+        } catch (e) {
+            alert("Could not save. If you are in Incognito/Private mode, storage might be blocked.");
+        }
+    }
+
+    function loadPreset(id) {
+        const lib = getLibrary();
+        const preset = lib.find(p => p.id === id);
+        if (preset) {
+            workInput.value = preset.work;
+            restInput.value = preset.rest;
+            repsInput.value = preset.reps;
+            calculateTotal();
+        }
+    }
+
+    function deletePreset(id, e) {
+        e.stopPropagation(); // Stop clicking the item
+        if (!confirm("Delete preset?")) return;
+        
+        try {
+            let lib = getLibrary();
+            lib = lib.filter(p => p.id !== id);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(lib));
+            renderLibrary();
+        } catch (e) { alert("Error deleting"); }
+    }
+
+    function renderLibrary() {
+        const lib = getLibrary();
+        libraryList.innerHTML = '';
+        
+        if (lib.length === 0) {
+            libraryList.innerHTML = '<div style="color:#555; padding:10px; font-style:italic;">No saved workouts</div>';
+            return;
+        }
+
+        lib.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'preset-item';
+            div.onclick = () => loadPreset(p.id);
+            div.innerHTML = `
+                <div class="preset-info">
+                    <strong>${p.name}</strong><br>
+                    <span>${p.work}</span>s / <span>${p.rest}</span>s / <span>${p.reps}</span>x
+                </div>
+                <button class="delete-btn" onclick="deletePreset(${p.id}, event)">✕</button>
+            `;
+            libraryList.appendChild(div);
+        });
+    }
+
+    // --- Event Listeners ---
+    workInput.addEventListener('input', calculateTotal);
+    restInput.addEventListener('input', calculateTotal);
+    repsInput.addEventListener('input', calculateTotal);
+
+    // We attach click listeners in JS to ensure clean context handling
+    btnStart.addEventListener('click', startTimer);
+    btnStop.addEventListener('click', stopTimer);
+    btnSave.addEventListener('click', saveToLibrary);
+
+    // Init
+    calculateTotal();
+    renderLibrary();
+
+</script>
+</body>
+</html>
