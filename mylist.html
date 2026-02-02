@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#121212">
+    <title>Daily Board Pro</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --accent: #bb86fc;
+            --text: #e0e0e0;
+            --red: #ff5252;
+            --green: #03dac6;
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, sans-serif;
+            overflow: hidden;
+        }
+
+        .app-container { display: flex; flex-direction: column; height: 100dvh; }
+
+        header {
+            height: 60px; display: flex; justify-content: space-between; align-items: center;
+            padding: 0 20px; background: var(--surface); border-bottom: 1px solid #333; z-index: 10;
+        }
+
+        .nav-btn { background: none; border: none; color: var(--accent); font-size: 1.5rem; padding: 10px; }
+        
+        #board-view { flex: 1; position: relative; background: #000; overflow: hidden; touch-action: none; }
+
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; }
+
+        #items-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
+
+        .todo-item {
+            position: absolute; background: #2d2d2d; border: 1px solid #444;
+            padding: 12px 18px; border-radius: 10px; font-size: 1rem;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); max-width: 180px; z-index: 3;
+        }
+
+        #list-view { flex: 1; padding: 20px; display: none; overflow-y: auto; background: var(--bg); }
+
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        input[type="text"] {
+            flex: 1; padding: 15px; border-radius: 8px; border: 1px solid #444;
+            background: #222; color: white; font-size: 1rem;
+        }
+        
+        .btn { border: none; border-radius: 8px; font-weight: bold; cursor: pointer; padding: 10px 15px; font-size: 0.85rem; }
+        .btn-accent { background: var(--accent); color: #000; }
+        .btn-outline { background: none; border: 1px solid #444; color: var(--text); margin-bottom: 10px; width: 100%; }
+        
+        .backup-zone { background: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px dashed #333; }
+        .storage-bar { height: 4px; background: #333; border-radius: 2px; margin: 8px 0; overflow: hidden; }
+        .storage-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+
+        .list-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; border-bottom: 1px solid #333;
+        }
+
+        nav.bottom-nav {
+            height: 70px; display: flex; background: var(--surface);
+            border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .tab-btn { flex: 1; border: none; background: none; color: #888; font-weight: bold; }
+        .tab-btn.active { color: var(--accent); }
+
+        #board-toolbar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 20; display: flex; gap: 8px; background: rgba(30,30,30,0.9);
+            padding: 6px; border-radius: 30px; border: 1px solid #444;
+        }
+
+        .mode-btn { padding: 10px 16px; border-radius: 20px; border: none; background: #333; color: white; font-size: 0.8rem; }
+        .mode-btn.active { background: var(--accent); color: #000; }
+        .mode-btn.active.pen { background: var(--red); color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header>
+        <button class="nav-btn" onclick="changeDay(-1)">❮</button>
+        <h1 id="date-label">Today</h1>
+        <button class="nav-btn" onclick="changeDay(1)">❯</button>
+    </header>
+
+    <div id="board-view">
+        <canvas id="canvas"></canvas>
+        <div id="items-layer"></div>
+        <div id="board-toolbar">
+            <button class="mode-btn active" id="btn-move" onclick="setMode('move')">Move</button>
+            <button class="mode-btn" id="btn-draw" onclick="setMode('draw')">Pen</button>
+            <button class="mode-btn" onclick="clearCanvas()">Clear</button>
+        </div>
+    </div>
+
+    <div id="list-view">
+        <div class="backup-zone">
+            <div id="storage-text" style="font-size: 0.75rem; color: #888;">Storage: 0.00 MB / 10 MB</div>
+            <div class="storage-bar"><div id="storage-fill" class="storage-fill"></div></div>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="btn btn-accent" style="flex:1" onclick="downloadBackup()">💾 Backup</button>
+                <button class="btn btn-outline" style="flex:1; margin:0;" onclick="document.getElementById('fileInput').click()">📂 Restore</button>
+                <input type="file" id="fileInput" style="display:none" onchange="uploadBackup(event)" accept=".json">
+            </div>
+        </div>
+
+        <button class="btn btn-outline" onclick="copyFromYesterday()">📋 Copy items from yesterday</button>
+        
+        <div class="input-group">
+            <input type="text" id="new-item" placeholder="Add task...">
+            <button class="btn btn-accent" onclick="addItem()">Add</button>
+        </div>
+        <div id="list-container"></div>
+    </div>
+
+    <nav class="bottom-nav">
+        <button class="tab-btn active" id="tab-board" onclick="switchTab('board')">BOARD</button>
+        <button class="tab-btn" id="tab-list" onclick="switchTab('list')">LIST EDITOR</button>
+    </nav>
+</div>
+
+<script>
+    let state = { date: new Date(), mode: 'move', items: [], isDrawing: false };
+    const els = {
+        date: document.getElementById('date-label'),
+        canvas: document.getElementById('canvas'),
+        itemsLayer: document.getElementById('items-layer'),
+        listContainer: document.getElementById('list-container'),
+        input: document.getElementById('new-item'),
+        boardView: document.getElementById('board-view'),
+        listView: document.getElementById('list-view')
+    };
+    const ctx = els.canvas.getContext('2d');
+
+    function resizeCanvas() {
+        const rect = els.boardView.getBoundingClientRect();
+        const temp = els.canvas.toDataURL();
+        els.canvas.width = rect.width;
+        els.canvas.height = rect.height;
+        let img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0);
+        img.src = temp;
+    }
+
+    window.onload = () => {
+        resizeCanvas();
+        loadDay(state.date);
+        els.boardView.addEventListener('touchstart', handleStart, {passive: false});
+        els.boardView.addEventListener('touchmove', handleMove, {passive: false});
+        els.boardView.addEventListener('touchend', handleEnd);
+    };
+
+    function switchTab(tab) {
+        els.boardView.style.display = tab === 'board' ? 'block' : 'none';
+        els.listView.style.display = tab === 'list' ? 'block' : 'none';
+        document.getElementById('tab-board').classList.toggle('active', tab === 'board');
+        document.getElementById('tab-list').classList.toggle('active', tab === 'list');
+        if(tab === 'board') { resizeCanvas(); renderBoard(); } else renderList();
+    }
+
+    function getKey(d) { return `db_v5_${d.toISOString().split('T')[0]}`; }
+
+    function loadDay(date) {
+        els.date.innerText = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        const data = JSON.parse(localStorage.getItem(getKey(date)) || '{"items":[]}');
+        state.items = data.items;
+        ctx.clearRect(0, 0, els.canvas.width, els.canvas.height);
+        if (data.img) {
+            let img = new Image();
+            img.onload = () => ctx.drawImage(img, 0, 0);
+            img.src = data.img;
+        }
+        renderBoard();
+    }
+
+    function save() {
+        localStorage.setItem(getKey(state.date), JSON.stringify({ items: state.items, img: els.canvas.toDataURL() }));
+    }
+
+    function renderBoard() {
+        els.itemsLayer.innerHTML = '';
+        state.items.forEach(item => {
+            let div = document.createElement('div');
+            div.className = 'todo-item';
+            div.innerText = item.text;
+            div.style.left = item.x + 'px'; div.style.top = item.y + 'px';
+            div.dataset.id = item.id;
+            els.itemsLayer.appendChild(div);
+        });
+    }
+
+    function renderList() {
+        els.listContainer.innerHTML = '';
+        
+        // Storage Calculation
+        let totalChars = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+            totalChars += (localStorage.getItem(localStorage.key(i)).length);
+        }
+        const mbUsed = (totalChars / 1024 / 1024).toFixed(2);
+        const percent = Math.min((mbUsed / 10) * 100, 100);
+        document.getElementById('storage-text').innerText = `Storage: ${mbUsed} MB / 10 MB`;
+        document.getElementById('storage-fill').style.width = percent + '%';
+
+        state.items.forEach(item => {
+            let div = document.createElement('div');
+            div.className = 'list-item';
+            div.innerHTML = `<span>${item.text}</span><button style="color:var(--red);background:none;border:none;font-size:1.2rem;" onclick="delItem(${item.id})">×</button>`;
+            els.listContainer.appendChild(div);
+        });
+    }
+
+    // --- BACKUP & RESTORE ---
+    function downloadBackup() {
+        const backup = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('db_v5_')) {
+                backup[key] = localStorage.getItem(key);
+            }
+        }
+        const blob = new Blob([JSON.stringify(backup)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `board_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+    }
+
+    function uploadBackup(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (confirm("This will overwrite your current boards. Continue?")) {
+                    Object.keys(data).forEach(key => localStorage.setItem(key, data[key]));
+                    loadDay(state.date);
+                    alert("Restore complete!");
+                }
+            } catch (err) { alert("Invalid backup file."); }
+        };
+        reader.readAsText(file);
+    }
+
+    function addItem() {
+        const val = els.input.value.trim();
+        if(!val) return;
+        state.items.push({ id: Date.now(), text: val, x: 50, y: 100 });
+        els.input.value = ''; renderList(); save(); renderBoard();
+    }
+
+    window.delItem = (id) => { state.items = state.items.filter(i => i.id !== id); renderList(); save(); };
+
+    function copyFromYesterday() {
+        let prev = new Date(state.date);
+        prev.setDate(prev.getDate() - 1);
+        const prevData = JSON.parse(localStorage.getItem(getKey(prev)) || '{"items":[]}');
+        if(prevData.items && prevData.items.length > 0) {
+            state.items = [...state.items, ...prevData.items.map(i => ({...i, id: Date.now() + Math.random()}))];
+            renderList(); save(); alert("Items copied!");
+        } else alert("No items found for yesterday.");
+    }
+
+    function setMode(m) {
+        state.mode = m;
+        document.getElementById('btn-move').className = m === 'move' ? 'mode-btn active' : 'mode-btn';
+        document.getElementById('btn-draw').className = m === 'draw' ? 'mode-btn active pen' : 'mode-btn';
+    }
+
+    function clearCanvas() { ctx.clearRect(0,0,els.canvas.width, els.canvas.height); save(); }
+
+    let dragItem = null;
+    let offset = {x:0, y:0};
+
+    function handleStart(e) {
+        const t = e.touches[0];
+        const rect = els.boardView.getBoundingClientRect();
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        if (state.mode === 'draw') {
+            state.isDrawing = true;
+            ctx.beginPath();
+            ctx.strokeStyle = '#ff5252'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+            ctx.moveTo(x, y);
+        } else {
+            let target = e.target.closest('.todo-item');
+            if(target) {
+                dragItem = target;
+                let r = target.getBoundingClientRect();
+                offset = { x: t.clientX - r.left, y: t.clientY - r.top };
+            }
+        }
+    }
+
+    function handleMove(e) {
+        const t = e.touches[0];
+        const rect = els.boardView.getBoundingClientRect();
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+
+        if (state.isDrawing) {
+            e.preventDefault();
+            ctx.lineTo(x, y);
+            ctx.stroke();
+        } else if (dragItem) {
+            e.preventDefault();
+            dragItem.style.left = (t.clientX - rect.left - offset.x) + 'px';
+            dragItem.style.top = (t.clientY - rect.top - offset.y) + 'px';
+        }
+    }
+
+    function handleEnd() {
+        if (state.isDrawing) { state.isDrawing = false; save(); }
+        if (dragItem) {
+            let id = parseFloat(dragItem.dataset.id);
+            let item = state.items.find(i => i.id === id);
+            item.x = parseFloat(dragItem.style.left);
+            item.y = parseFloat(dragItem.style.top);
+            save(); dragItem = null;
+        }
+    }
+
+    function changeDay(dir) {
+        state.date.setDate(state.date.getDate() + dir);
+        loadDay(state.date);
+    }
+</script>
+</body>
+</html>

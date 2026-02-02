@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HabitFlow Pro</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --surface: #1e1e1e;
+            --primary: #bb86fc;
+            --error: #cf6679;
+            --success: #03dac6;
+            --text: #e1e1e1;
+            --secondary: #03dac6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            width: 100%;
+            max-width: 600px;
+            margin-bottom: 15px;
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 5px;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .tab.active { background: var(--primary); color: #000; }
+
+        .view { display: none; width: 100%; max-width: 600px; }
+        .view.active { display: block; }
+
+        .card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        input, select, button {
+            width: 100%;
+            padding: 14px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: none;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+
+        input { background: #333; color: white; }
+        button { background: var(--primary); color: #000; font-weight: bold; }
+        
+        .btn-small { padding: 8px; font-size: 12px; margin: 4px 0; width: auto; }
+        .delete-btn { background: var(--error); color: white; }
+
+        /* Table & Sticky Logic */
+        .table-outer {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        table { border-collapse: separate; border-spacing: 0; width: 100%; }
+        th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #333; border-right: 1px solid #222; min-width: 35px; }
+
+        .sticky-col { position: sticky; left: 0; background: var(--surface); z-index: 2; text-align: left; min-width: 120px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); }
+        .status-col { position: sticky; left: 120px; background: var(--surface); z-index: 2; min-width: 40px; }
+
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; }
+        .status-dot.warning { background-color: var(--error); box-shadow: 0 0 8px var(--error); }
+
+        .day-cell { width: 28px; height: 28px; border: 1px solid #444; border-radius: 4px; margin: auto; }
+        .day-cell.checked { background-color: var(--success); border-color: var(--success); }
+
+        /* Stats UI */
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .stat-box { background: #2a2a2a; padding: 15px; border-radius: 10px; text-align: center; }
+        .stat-val { font-size: 24px; font-weight: bold; color: var(--primary); display: block; }
+        .stat-label { font-size: 12px; opacity: 0.7; }
+        
+        .progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; margin: 10px 0; }
+        .progress-fill { height: 100%; background: var(--success); transition: width 0.5s; }
+    </style>
+</head>
+<body>
+
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('tracker')">Tracker</div>
+        <div class="tab" onclick="switchTab('stats')">Insights</div>
+    </div>
+
+    <div id="tracker" class="view active">
+        <div class="card">
+            <input type="text" id="habitName" placeholder="New Habit Name">
+            <input type="number" id="maxSkip" placeholder="Max Allowed Skips" min="0">
+            <button onclick="addHabit()">Add Habit</button>
+        </div>
+
+        <div class="card" style="padding: 10px;">
+            <select id="monthSelect" onchange="renderTable()"></select>
+            <div class="table-outer">
+                <table id="habitTable">
+                    <thead><tr id="tableHeader"></tr></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0">Data</h3>
+            <div style="display:flex; gap:10px">
+                <button style="background:#444; color:white" onclick="exportData()">Export</button>
+                <button style="background:#444; color:white" onclick="importData()">Import</button>
+            </div>
+            <button class="delete-btn btn-small" style="width:100%; margin-top:10px" onclick="clearAllData()">Reset App</button>
+        </div>
+    </div>
+
+    <div id="stats" class="view">
+        <div class="card">
+            <h2>Weekly Snapshot</h2>
+            <div id="weeklyStats"></div>
+        </div>
+        <div class="card">
+            <h2>Habit Performance</h2>
+            <div id="habitPerformance"></div>
+        </div>
+    </div>
+
+    <script>
+        let habits = JSON.parse(localStorage.getItem('habits')) || [];
+        const currentYear = new Date().getFullYear();
+
+        // Navigation
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelector(`[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+            if(tabId === 'stats') renderStats();
+        }
+
+        // Initialize Month Dropdown
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        const monthSelect = document.getElementById('monthSelect');
+        months.forEach((m, i) => {
+            let opt = document.createElement('option');
+            opt.value = i;
+            opt.innerHTML = m;
+            if(i === new Date().getMonth()) opt.selected = true;
+            monthSelect.appendChild(opt);
+        });
+
+        function save() {
+            localStorage.setItem('habits', JSON.stringify(habits));
+            renderTable();
+        }
+
+        function addHabit() {
+            const name = document.getElementById('habitName').value;
+            const skip = parseInt(document.getElementById('maxSkip').value);
+            if (!name || isNaN(skip)) return alert("Fill all fields");
+            habits.push({ id: Date.now(), name, maxSkip: skip, history: {} });
+            document.getElementById('habitName').value = '';
+            document.getElementById('maxSkip').value = '';
+            save();
+        }
+
+        function deleteHabit(id) {
+            if(confirm("Delete habit?")) { habits = habits.filter(h => h.id !== id); save(); }
+        }
+
+        function toggleDate(habitId, dateStr) {
+            const habit = habits.find(h => h.id === habitId);
+            habit.history[dateStr] = !habit.history[dateStr];
+            if (!habit.history[dateStr]) delete habit.history[dateStr];
+            save();
+        }
+
+        function getStatus(habit) {
+            const today = new Date();
+            let gap = 0;
+            for(let i=0; i <= habit.maxSkip + 1; i++) {
+                let d = new Date(); d.setDate(today.getDate() - i);
+                let dStr = d.toISOString().split('T')[0];
+                if(habit.history[dStr]) break;
+                gap++;
+            }
+            return gap > habit.maxSkip;
+        }
+
+        function renderTable() {
+            const month = parseInt(monthSelect.value);
+            const daysInMonth = new Date(currentYear, month + 1, 0).getDate();
+            const header = document.getElementById('tableHeader');
+            header.innerHTML = '<th class="sticky-col">Habit</th><th class="status-col">!</th>';
+            for (let d = 1; d <= daysInMonth; d++) header.innerHTML += `<th>${d}</th>`;
+
+            const body = document.getElementById('tableBody');
+            body.innerHTML = '';
+            habits.forEach(habit => {
+                const isFailing = getStatus(habit);
+                let row = document.createElement('tr');
+                row.innerHTML = `<td class="sticky-col"><b>${habit.name}</b><br><button class="delete-btn btn-small" onclick="deleteHabit(${habit.id})">✕</button></td>
+                                 <td class="status-col"><span class="status-dot ${isFailing ? 'warning' : ''}"></span></td>`;
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const dateStr = `${currentYear}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                    const checked = habit.history[dateStr] ? 'checked' : '';
+                    row.innerHTML += `<td><div class="day-cell ${checked}" onclick="toggleDate(${habit.id}, '${dateStr}')"></div></td>`;
+                }
+                body.appendChild(row);
+            });
+        }
+
+        function renderStats() {
+            const weekDiv = document.getElementById('weeklyStats');
+            const perfDiv = document.getElementById('habitPerformance');
+            weekDiv.innerHTML = ''; perfDiv.innerHTML = '';
+
+            if(habits.length === 0) { weekDiv.innerHTML = "No data yet."; return; }
+
+            // 1. Weekly Logic
+            let weeklyCompletion = 0;
+            for(let i=0; i<7; i++) {
+                let d = new Date(); d.setDate(d.getDate() - i);
+                let dStr = d.toISOString().split('T')[0];
+                habits.forEach(h => { if(h.history[dStr]) weeklyCompletion++; });
+            }
+            const totalWeeklyPossible = habits.length * 7;
+            const weekPercent = Math.round((weeklyCompletion / totalWeeklyPossible) * 100) || 0;
+
+            weekDiv.innerHTML = `
+                <div class="stat-grid">
+                    <div class="stat-box"><span class="stat-val">${weeklyCompletion}</span><span class="stat-label">Total Ticks (7d)</span></div>
+                    <div class="stat-box"><span class="stat-val">${weekPercent}%</span><span class="stat-label">Efficiency</span></div>
+                </div>
+            `;
+
+            // 2. Habit Performance (Monthly)
+            const currentMonth = new Date().getMonth();
+            habits.forEach(h => {
+                let count = 0;
+                Object.keys(h.history).forEach(date => {
+                    if(new Date(date).getMonth() === currentMonth) count++;
+                });
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                const pct = Math.round((count / daysInMonth) * 100);
+                
+                perfDiv.innerHTML += `
+                    <div style="margin-bottom:15px">
+                        <div style="display:flex; justify-content:space-between; font-size:14px">
+                            <span>${h.name}</span>
+                            <span>${pct}%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                    </div>
+                `;
+            });
+        }
+
+        // Data Helpers
+        function exportData() {
+            const blob = new Blob([JSON.stringify(habits)], {type: "application/json"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `habits_backup.json`;
+            a.click();
+        }
+
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = e => {
+                const reader = new FileReader();
+                reader.onload = re => { habits = JSON.parse(re.target.result); save(); };
+                reader.readAsText(e.target.files[0]);
+            }
+            input.click();
+        }
+
+        function clearAllData() { if(confirm("Wipe everything?")) { localStorage.clear(); habits = []; renderTable(); } }
+
+        renderTable();
+    </script>
+</body>
+</html>
