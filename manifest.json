@@ -3,6 +3,8 @@
   "short_name": "Lb",
   "start_url": "dashboard.html",
   "display": "standalone",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
   "icons": [
     {
       "src": "icon-192x192.png",
