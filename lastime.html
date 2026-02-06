@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Last Time That</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #1a1d23;
+    --text: #e6e6e6;
+    --muted: #9aa0a6;
+    --accent: #4c8bf5;
+    --danger: #e5533d;
+    --radius: 10px;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .app {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 16px 0;
+  }
+
+  .add {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .add input {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--card);
+    color: var(--text);
+  }
+
+  .add input::placeholder {
+    color: var(--muted);
+  }
+
+  .add button {
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  li {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .label {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .time {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .tap {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+  }
+
+  .del {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--danger);
+    font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1>Last time that…</h1>
+
+  <div class="add">
+    <input id="newItem" placeholder="Nuova voce">
+    <button onclick="addItem()">+</button>
+  </div>
+
+  <ul id="list"></ul>
+</div>
+
+<script>
+const STORAGE_KEY = "last_time_items";
+
+function load() {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+}
+
+function save(data) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function daysAgo(ts) {
+  const diff = Date.now() - ts;
+  return Math.floor(diff / 86400000);
+}
+
+function render() {
+  const data = load();
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  Object.entries(data).forEach(([name, ts]) => {
+    const li = document.createElement("li");
+
+    const left = document.createElement("div");
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = name;
+
+    const time = document.createElement("div");
+    time.className = "time";
+    time.textContent = ts ? `${daysAgo(ts)} giorni fa` : "mai";
+
+    left.append(label, time);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const tap = document.createElement("button");
+    tap.className = "tap";
+    tap.textContent = "Tap";
+    tap.onclick = () => {
+      data[name] = Date.now();
+      save(data);
+      render();
+    };
+
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "✕";
+    del.onclick = () => {
+      delete data[name];
+      save(data);
+      render();
+    };
+
+    actions.append(tap, del);
+    li.append(left, actions);
+    list.appendChild(li);
+  });
+}
+
+function addItem() {
+  const input = document.getElementById("newItem");
+  const name = input.value.trim();
+  if (!name) return;
+
+  const data = load();
+  if (!(name in data)) {
+    data[name] = null;
+    save(data);
+    render();
+  }
+  input.value = "";
+}
+
+render();
+</script>
+
+</body>
+</html>
